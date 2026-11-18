@@ -1,1 +1,10 @@
 node_modules/
+
+# Agent harness and editor artifacts
+.claude/
+.codex/
+.commandcode/
+.husky/
+.idea/
+.vscode/
+.mcp.json
