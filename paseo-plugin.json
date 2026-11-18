@@ -1,0 +1,9 @@
+{
+  "id": "paseo-omarchy-theme",
+  "name": "Omarchy Theme",
+  "description": "Adds an Omarchy theme that follows the active theme of the Omarchy desktop on this host.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.16.1"
+  }
+}
