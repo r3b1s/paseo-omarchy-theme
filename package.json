@@ -15,7 +15,8 @@
     "shared/"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "rm -rf node_modules/.cache/paseo-test && tsc --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --strict --skipLibCheck --outDir node_modules/.cache/paseo-test shared/wcag.test.ts && node node_modules/.cache/paseo-test/wcag.test.js"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.16.1",

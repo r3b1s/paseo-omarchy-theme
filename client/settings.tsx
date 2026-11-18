@@ -42,6 +42,14 @@ export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
     return { label: "Not available", style: styles.danger };
   })();
 
+  const contrastSummary = (() => {
+    const wcag = status?.wcag;
+    if (!status?.available || !wcag) return "—";
+    const minRatio = wcag.minTextContrast.toFixed(1);
+    if (wcag.adjustedTokens.length === 0) return `WCAG 2.2 AA · Passed natively (${minRatio}:1 min)`;
+    return `WCAG 2.2 AA · ${wcag.adjustedTokens.length} adjusted (${minRatio}:1 min)`;
+  })();
+
   return (
     <SettingsSection title="Omarchy theme sync" info="Follows the active theme of the Omarchy desktop on this host.">
       <SettingsCard>
@@ -50,6 +58,9 @@ export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
         </SettingsRow>
         <SettingsRow label="Omarchy theme">
           <Text style={status?.available ? styles.value : styles.muted}>{themeLabel(status?.themeName ?? null)}</Text>
+        </SettingsRow>
+        <SettingsRow label="Contrast">
+          <Text style={status?.available && status?.wcag ? styles.value : styles.muted}>{contrastSummary}</Text>
         </SettingsRow>
         <SettingsRow label="Generation">
           <Text style={styles.muted}>{status?.generation ?? "—"}</Text>
@@ -64,6 +75,9 @@ export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
             Select the theme named Omarchy under Settings, Appearance to follow the desktop theme on this device. Devices
             that keep a built-in theme are not affected.
           </Text>
+          {status?.available && status.wcag && status.wcag.adjustedTokens.length > 0 ? (
+            <Text style={styles.note}>Adjusted tokens: {status.wcag.adjustedTokens.join(", ")}</Text>
+          ) : null}
           {status && !status.available && status.error ? <Text style={styles.danger}>{status.error}</Text> : null}
         </View>
       </SettingsCard>

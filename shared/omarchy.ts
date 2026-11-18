@@ -18,6 +18,13 @@ export const themePaletteSchema = z.object({
   foregroundExtraMuted: z.string(),
 });
 
+export const wcagDiagnosticsSchema = z.object({
+  level: z.literal("AA"),
+  adjustedTokens: z.array(z.string()),
+  minTextContrast: z.number(),
+  minUiContrast: z.number(),
+});
+
 export const omarchyThemeStatusSchema = z.object({
   available: z.boolean(),
   themeName: z.string().nullable(),
@@ -25,10 +32,12 @@ export const omarchyThemeStatusSchema = z.object({
   syncedAt: z.string().nullable(),
   appearance: z.enum(["light", "dark"]).nullable(),
   colors: themePaletteSchema.nullable(),
+  wcag: wcagDiagnosticsSchema.nullable().optional(),
   error: z.string().nullable(),
 });
 
 export type ThemePalette = z.infer<typeof themePaletteSchema>;
+export type WcagDiagnostics = z.infer<typeof wcagDiagnosticsSchema>;
 export type OmarchyThemeStatus = z.infer<typeof omarchyThemeStatusSchema>;
 
 export const omarchyThemeStatusRpc = defineRpc({
