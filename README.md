@@ -38,6 +38,10 @@ Or paste `github:r3b1s/paseo-omarchy-theme` into Settings → Plugins → Plugin
 
 Then open Settings → Appearance and select **Omarchy**.
 
+## Using with remote daemons
+
+Because the plugin reads Omarchy's theme state from the daemon host, install it on a local (`localhost`) Paseo daemon on your Omarchy desktop if you want Paseo to follow your local desktop theme—even when your main workspaces and sessions run on a remote daemon. As long as that local host stays connected in Paseo alongside your remote hosts, the **Omarchy** theme will stay synced with your local desktop.
+
 ## Privacy
 
 The plugin only reads these files under `$XDG_STATE_HOME/omarchy/current` (default `~/.local/state/omarchy/current`):
