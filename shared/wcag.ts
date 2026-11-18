@@ -46,14 +46,21 @@ export interface Oklch {
   h: number;
 }
 
+export type ContrastMode = "balanced" | "faithful" | "wcag-aa";
+
+export const DEFAULT_CONTRAST_MODE: ContrastMode = "balanced";
+
 export interface WcagDiagnostics {
-  level: "AA";
+  level: "balanced" | "faithful" | "AA";
   adjustedTokens: string[];
   minTextContrast: number;
   minUiContrast: number;
+  minPrimaryTextContrast?: number;
+  minBorderContrast?: number;
 }
 
 export interface SolvedPalette {
+  mode: ContrastMode;
   appearance: "light" | "dark";
   colors: ThemePalette;
   wcag: WcagDiagnostics;
@@ -386,33 +393,184 @@ function nudgeSurfaceAway(
   return oklchToHex({ l: fallbackL, c: lch.c, h: lch.h });
 }
 
+function shiftSurfaceOklch(hex: string, deltaL: number, bounds: { minL: number; maxL: number }): string {
+  const lch = hexToOklch(hex);
+  const shiftedL = Math.min(bounds.maxL, Math.max(bounds.minL, lch.l + deltaL));
+  return oklchToHex({ l: shiftedL, c: lch.c, h: lch.h });
+}
+
+function softenBorderContrast(
+  seedHex: string,
+  anchorSurface: string,
+  uiSurfaces: readonly string[],
+  maxRatio: number,
+  targetRatio: number,
+  minFloor: number,
+  direction: "lighter" | "darker",
+): string {
+  let candidate = adjustColorForContrast(seedHex, uiSurfaces, minFloor, direction);
+  if (contrastRatio(candidate, anchorSurface) <= maxRatio) {
+    return candidate;
+  }
+
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) * 0.5;
+    const mixed = mixOklabHex(anchorSurface, candidate, mid);
+    if (contrastRatio(mixed, anchorSurface) >= targetRatio) {
+      hi = mid;
+    } else {
+      lo = mid;
+    }
+  }
+
+  const softened = mixOklabHex(anchorSurface, candidate, hi);
+  if (minContrastAgainst(softened, uiSurfaces) >= minFloor) {
+    return softened;
+  }
+  return adjustColorForContrast(softened, uiSurfaces, minFloor, direction);
+}
+
+interface ModeProfile {
+  level: WcagDiagnostics["level"];
+  sidebarDelta: number;
+  raisedDelta: number;
+  hoverDelta: number;
+  selectedSidebarDelta: number;
+  selectedHoverDelta: number;
+  surface3Delta: number;
+  surface3BgDelta: number;
+  surface4Delta: number;
+  surface4RaisedDelta: number;
+  stepSurfacesFromRaised: boolean;
+  foregroundMin: number;
+  mutedMin: number;
+  mutedSeedLightMin: number;
+  mutedSeedDarkMin: number;
+  mutedSeedMix: number;
+  capMutedCeiling: boolean;
+  extraMutedMin: number;
+  extraMutedMix: number;
+  borderMin: number;
+  borderMaxAgainstRaised: number | null;
+  borderTargetAgainstRaised: number;
+  accentMin: number;
+  ringMin: number;
+}
+
+const MODE_PROFILES: Record<ContrastMode, ModeProfile> = {
+  balanced: {
+    level: "balanced",
+    sidebarDelta: 0.015,
+    raisedDelta: 0.018,
+    hoverDelta: 0.015,
+    selectedSidebarDelta: 0.03,
+    selectedHoverDelta: 0.02,
+    surface3Delta: 0.016,
+    surface3BgDelta: 0.03,
+    surface4Delta: 0.016,
+    surface4RaisedDelta: 0.03,
+    stepSurfacesFromRaised: true,
+    foregroundMin: TEXT_CONTRAST_AA,
+    mutedMin: 3.2,
+    mutedSeedLightMin: 3.2,
+    mutedSeedDarkMin: 3.2,
+    mutedSeedMix: 0.35,
+    capMutedCeiling: true,
+    extraMutedMin: 2.2,
+    extraMutedMix: 0.32,
+    borderMin: 1.22,
+    borderMaxAgainstRaised: 1.6,
+    borderTargetAgainstRaised: 1.42,
+    accentMin: 3.0,
+    ringMin: 2.5,
+  },
+  faithful: {
+    level: "faithful",
+    sidebarDelta: 0.008,
+    raisedDelta: 0.008,
+    hoverDelta: 0.008,
+    selectedSidebarDelta: 0.012,
+    selectedHoverDelta: 0.01,
+    surface3Delta: 0.014,
+    surface3BgDelta: 0.022,
+    surface4Delta: 0.012,
+    surface4RaisedDelta: 0.02,
+    stepSurfacesFromRaised: false,
+    foregroundMin: 3.0,
+    mutedMin: 2.2,
+    mutedSeedLightMin: 2.2,
+    mutedSeedDarkMin: 2.2,
+    mutedSeedMix: 0.35,
+    capMutedCeiling: false,
+    extraMutedMin: 1.5,
+    extraMutedMix: 0.32,
+    borderMin: 1.15,
+    borderMaxAgainstRaised: null,
+    borderTargetAgainstRaised: 1.42,
+    accentMin: 2.5,
+    ringMin: 2.0,
+  },
+  "wcag-aa": {
+    level: "AA",
+    sidebarDelta: 0.025,
+    raisedDelta: 0.03,
+    hoverDelta: 0.03,
+    selectedSidebarDelta: 0.06,
+    selectedHoverDelta: 0.04,
+    surface3Delta: 0.025,
+    surface3BgDelta: 0.045,
+    surface4Delta: 0.025,
+    surface4RaisedDelta: 0.04,
+    stepSurfacesFromRaised: false,
+    foregroundMin: TEXT_CONTRAST_AA,
+    mutedMin: TEXT_CONTRAST_AA,
+    mutedSeedLightMin: 4.0,
+    mutedSeedDarkMin: 3.0,
+    mutedSeedMix: 0.28,
+    capMutedCeiling: false,
+    extraMutedMin: TEXT_CONTRAST_AA,
+    extraMutedMix: 0.25,
+    borderMin: UI_CONTRAST_AA,
+    borderMaxAgainstRaised: null,
+    borderTargetAgainstRaised: UI_CONTRAST_AA,
+    accentMin: TEXT_CONTRAST_AA,
+    ringMin: UI_CONTRAST_AA,
+  },
+};
+
 function chooseMutedForegroundSeed(
   foregroundHex: string,
   backgroundHex: string,
   rawLightForeground: string | null,
   rawDarkForeground: string | null,
+  profile: ModeProfile,
 ): string {
   const fgContrast = contrastRatio(foregroundHex, backgroundHex);
 
   if (rawLightForeground) {
     const lightContrast = contrastRatio(rawLightForeground, backgroundHex);
     const distinctFromFg = lightContrast <= fgContrast * 0.88 && rawLightForeground !== foregroundHex;
-    if (distinctFromFg && lightContrast >= 4.0) {
+    if (distinctFromFg && lightContrast >= profile.mutedSeedLightMin) {
       return rawLightForeground;
     }
   }
 
   if (rawDarkForeground && rawDarkForeground !== foregroundHex) {
     const darkContrast = contrastRatio(rawDarkForeground, backgroundHex);
-    if (darkContrast >= 3.0 && darkContrast < fgContrast * 0.9) {
+    if (darkContrast >= profile.mutedSeedDarkMin && darkContrast < fgContrast * 0.9) {
       return rawDarkForeground;
     }
   }
 
-  return mixOklabHex(foregroundHex, backgroundHex, 0.28);
+  return mixOklabHex(foregroundHex, backgroundHex, profile.mutedSeedMix);
 }
 
-export function solveOmarchyPalette(values: Record<string, string>): SolvedPalette | null {
+export function solveOmarchyPalette(
+  values: Record<string, string>,
+  mode: ContrastMode = DEFAULT_CONTRAST_MODE,
+): SolvedPalette | null {
   const rawBackgroundRaw = typeof values.background === "string" ? normalizeHexColor(values.background) : null;
   const rawForegroundRaw =
     typeof values.foreground === "string" && rawBackgroundRaw
@@ -423,6 +581,7 @@ export function solveOmarchyPalette(values: Record<string, string>): SolvedPalet
     return null;
   }
 
+  const profile = MODE_PROFILES[mode] ?? MODE_PROFILES[DEFAULT_CONTRAST_MODE];
   const bgRgb = parseHexRgb(rawBackgroundRaw) ?? { r: 0, g: 0, b: 0 };
   const pick = (key: string): string | null => {
     const raw = values[key];
@@ -432,6 +591,7 @@ export function solveOmarchyPalette(values: Record<string, string>): SolvedPalet
   const appearance = detectAppearance(rawBackgroundRaw, rawForegroundRaw, values.mode);
   const isDark = appearance === "dark";
   const textDirection: "lighter" | "darker" = isDark ? "lighter" : "darker";
+  const surfaceOffset = isDark ? 1 : -1;
 
   const background = rawBackgroundRaw;
   const bgOklch = hexToOklch(background);
@@ -474,82 +634,122 @@ export function solveOmarchyPalette(values: Record<string, string>): SolvedPalet
 
   const sidebar = nudgeSurfaceAway(
     clampSurfaceOklch(seedDarkBg, bounds),
-    [{ hex: background, minDeltaL: 0.025 }],
+    [{ hex: background, minDeltaL: profile.sidebarDelta }],
     bounds,
     -1,
   );
 
   const raised = nudgeSurfaceAway(
     clampSurfaceOklch(seedLighterBg, bounds),
-    [{ hex: background, minDeltaL: 0.03 }],
+    [{ hex: background, minDeltaL: profile.raisedDelta }],
     bounds,
-    isDark ? 1 : -1,
+    surfaceOffset,
   );
 
   const control = raised;
 
   const sidebarHover = nudgeSurfaceAway(
     clampSurfaceOklch(seedLighterBg, bounds),
-    [{ hex: sidebar, minDeltaL: 0.03 }],
+    [{ hex: sidebar, minDeltaL: profile.hoverDelta }],
     bounds,
-    isDark ? 1 : -1,
+    surfaceOffset,
   );
 
   const sidebarSelected = nudgeSurfaceAway(
     clampSurfaceOklch(seedSelection, bounds),
     [
-      { hex: sidebar, minDeltaL: 0.06 },
-      { hex: sidebarHover, minDeltaL: 0.04 },
+      { hex: sidebar, minDeltaL: profile.selectedSidebarDelta },
+      { hex: sidebarHover, minDeltaL: profile.selectedHoverDelta },
     ],
     bounds,
-    isDark ? 1 : -1,
+    surfaceOffset,
   );
 
+  const surface3Seed = profile.stepSurfacesFromRaised
+    ? shiftSurfaceOklch(raised, surfaceOffset * profile.surface3Delta, bounds)
+    : raised;
   const surface3 = nudgeSurfaceAway(
-    raised,
+    surface3Seed,
     [
-      { hex: raised, minDeltaL: 0.025 },
-      { hex: background, minDeltaL: 0.045 },
+      { hex: raised, minDeltaL: profile.surface3Delta },
+      { hex: background, minDeltaL: profile.surface3BgDelta },
     ],
     bounds,
-    isDark ? 1 : -1,
+    surfaceOffset,
   );
 
+  const surface4Seed = profile.stepSurfacesFromRaised
+    ? shiftSurfaceOklch(surface3, surfaceOffset * profile.surface4Delta, bounds)
+    : clampSurfaceOklch(rawMuted ?? seedSelection, bounds);
   const surface4 = nudgeSurfaceAway(
-    clampSurfaceOklch(rawMuted ?? seedSelection, bounds),
+    surface4Seed,
     [
-      { hex: surface3, minDeltaL: 0.025 },
-      { hex: raised, minDeltaL: 0.04 },
+      { hex: surface3, minDeltaL: profile.surface4Delta },
+      { hex: raised, minDeltaL: profile.surface4RaisedDelta },
     ],
     bounds,
-    isDark ? 1 : -1,
+    surfaceOffset,
   );
 
   const allSurfaces = [background, raised, control, sidebar, sidebarHover, sidebarSelected, surface3, surface4];
 
-  // Solve text tokens (>= 4.5:1 across all surfaces) with distinct hierarchy when headroom allows.
-  const foreground = adjustColorForContrast(rawForegroundRaw, allSurfaces, TEXT_CONTRAST_AA, textDirection);
+  // Solve text tokens according to the active contrast profile.
+  const foreground = adjustColorForContrast(rawForegroundRaw, allSurfaces, profile.foregroundMin, textDirection);
 
   const fgMinContrast = minContrastAgainst(foreground, allSurfaces);
-  const mutedSeed = chooseMutedForegroundSeed(foreground, background, rawLightFg, rawDarkFg);
+  const mutedSeed = chooseMutedForegroundSeed(foreground, background, rawLightFg, rawDarkFg, profile);
   const mutedTarget =
-    fgMinContrast >= 6.5 ? Math.min(5.5, Math.max(TEXT_CONTRAST_AA, fgMinContrast - 1.2)) : TEXT_CONTRAST_AA;
+    mode === "wcag-aa" && fgMinContrast >= 6.5
+      ? Math.min(5.5, Math.max(TEXT_CONTRAST_AA, fgMinContrast - 1.2))
+      : profile.mutedMin;
   let mutedForeground = adjustColorForContrast(mutedSeed, allSurfaces, mutedTarget, textDirection);
-  if (minContrastAgainst(mutedForeground, allSurfaces) < TEXT_CONTRAST_AA) {
-    mutedForeground = adjustColorForContrast(mutedForeground, allSurfaces, TEXT_CONTRAST_AA, textDirection);
+  if (minContrastAgainst(mutedForeground, allSurfaces) < profile.mutedMin) {
+    mutedForeground = adjustColorForContrast(mutedForeground, allSurfaces, profile.mutedMin, textDirection);
+  }
+  if (profile.capMutedCeiling && fgMinContrast >= 5.0) {
+    const mutedContrast = contrastRatio(mutedForeground, background);
+    const fgBgContrast = contrastRatio(foreground, background);
+    if (mutedContrast > fgBgContrast * 0.78) {
+      mutedForeground = adjustColorForContrast(
+        mixOklabHex(foreground, background, 0.38),
+        allSurfaces,
+        profile.mutedMin,
+        textDirection,
+      );
+    }
   }
 
-  const extraMutedSeed = rawDarkFg ?? mixOklabHex(mutedForeground, background, 0.25);
-  const foregroundExtraMuted = adjustColorForContrast(extraMutedSeed, allSurfaces, TEXT_CONTRAST_AA, textDirection);
+  const mutedBgContrast = contrastRatio(mutedForeground, background);
+  const useRawDarkForExtra =
+    rawDarkFg !== null &&
+    (mode === "wcag-aa" || contrastRatio(rawDarkFg, background) < mutedBgContrast * 0.95);
+  const extraMutedSeed = useRawDarkForExtra ? rawDarkFg : mixOklabHex(mutedForeground, background, profile.extraMutedMix);
+  const foregroundExtraMuted = adjustColorForContrast(
+    extraMutedSeed,
+    allSurfaces,
+    profile.extraMutedMin,
+    textDirection,
+  );
 
-  // Solve border (>= 3.0:1 against UI surfaces).
+  // Solve border against UI surfaces (soft hairline in balanced, raw in faithful, 3.0:1 in wcag-aa).
   const uiSurfaces = [background, raised, control, sidebar, surface3];
-  const border = adjustColorForContrast(seedMuted, uiSurfaces, UI_CONTRAST_AA, textDirection);
+  const border =
+    profile.borderMaxAgainstRaised !== null
+      ? softenBorderContrast(
+          seedMuted,
+          raised,
+          uiSurfaces,
+          profile.borderMaxAgainstRaised,
+          profile.borderTargetAgainstRaised,
+          profile.borderMin,
+          textDirection,
+        )
+      : adjustColorForContrast(seedMuted, uiSurfaces, profile.borderMin, textDirection);
 
-  // Solve accent (>= 4.5:1 on text/control surfaces) and ring (derived from accent, >= 3.0:1 everywhere).
+  // Solve accent and focus ring.
   const accentSurfaces = [background, raised, control, sidebar, sidebarSelected];
-  const accent = adjustColorForContrast(seedAccent, accentSurfaces, TEXT_CONTRAST_AA, textDirection);
-  const ring = adjustColorForContrast(accent, allSurfaces, UI_CONTRAST_AA, textDirection);
+  const accent = adjustColorForContrast(seedAccent, accentSurfaces, profile.accentMin, textDirection);
+  const ring = adjustColorForContrast(accent, allSurfaces, profile.ringMin, textDirection);
 
   const colors: ThemePalette = {
     background,
@@ -590,26 +790,30 @@ export function solveOmarchyPalette(values: Record<string, string>): SolvedPalet
     (key) => colors[key] !== naiveMapping[key],
   );
 
+  const minPrimaryTextContrast = minContrastAgainst(foreground, allSurfaces);
   const minTextContrast = Math.min(
-    minContrastAgainst(foreground, allSurfaces),
+    minPrimaryTextContrast,
     minContrastAgainst(mutedForeground, allSurfaces),
     minContrastAgainst(foregroundExtraMuted, allSurfaces),
     minContrastAgainst(accent, accentSurfaces),
   );
-
+  const minBorderContrast = minContrastAgainst(border, uiSurfaces);
   const minUiContrast = Math.min(
-    minContrastAgainst(border, uiSurfaces),
+    minBorderContrast,
     minContrastAgainst(ring, allSurfaces),
   );
 
   return {
+    mode,
     appearance,
     colors,
     wcag: {
-      level: "AA",
+      level: profile.level,
       adjustedTokens,
       minTextContrast: Math.round(minTextContrast * 100) / 100,
       minUiContrast: Math.round(minUiContrast * 100) / 100,
+      minPrimaryTextContrast: Math.round(minPrimaryTextContrast * 100) / 100,
+      minBorderContrast: Math.round(minBorderContrast * 100) / 100,
     },
   };
 }

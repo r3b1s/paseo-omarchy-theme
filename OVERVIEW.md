@@ -8,8 +8,12 @@ Install the plugin on a daemon that runs Omarchy. On hosts without Omarchy the p
 
 If your main workspaces and sessions run on a remote daemon, install the plugin on a local (`localhost`) Paseo daemon on your Omarchy desktop and keep that host connected in Paseo. The local daemon supplies your desktop's Omarchy theme to the client even while you work on remote hosts.
 
-## Consistent contrast across themes
+## Contrast modes
 
-Omarchy themes vary widely, and a palette that looks right on the desktop can leave text or controls hard to read in Paseo. Before a palette reaches the app, the plugin checks it against the WCAG 2.2 Level AA contrast thresholds and adjusts only the colors that fall short. Text, muted text, and accent colors are brought to at least 4.5:1 against every surface they appear on, and borders and focus rings to at least 3:1. Missing secondary colors are derived from the theme's background and foreground, and surfaces that collapse into one another or contradict the theme's light or dark appearance are corrected.
+Omarchy themes vary widely, and different users prefer different trade-offs between visual softness and strict contrast guarantees. Settings, Omarchy theme lets you choose between three deterministic palette modes:
 
-The same rules apply to every theme, built-in or custom, with no per-theme tuning, so the reading experience stays consistent whichever Omarchy theme is active. The settings screen shows whether the active theme passed as-is or how many colors were adjusted, along with the lowest text contrast ratio.
+- Balanced (default): keeps primary text at 4.5:1 or higher while softening card borders into subtle hairlines, stepping nested surfaces smoothly, and preserving a clear visual hierarchy across muted text and accents.
+- Faithful: preserves Omarchy's authored `colors.toml` tokens as closely as possible, intervening only to fix missing keys, inverted polarity, collapsed surfaces, or unreadable primary text.
+- WCAG 2.2 AA: checks every token against WCAG 2.2 Level AA contrast thresholds and adjusts any that fall short—bringing text, muted text, and accents to at least 4.5:1 and borders and focus rings to at least 3:1.
+
+The same deterministic rules apply to every theme, built-in or custom, with no per-theme tuning. The settings screen shows the active mode, contrast summary, synced theme name, generation, and last sync time.

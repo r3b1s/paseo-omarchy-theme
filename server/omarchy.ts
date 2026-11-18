@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { OmarchyThemeStatus } from "../shared/omarchy";
-import { parseColorsToml, solveOmarchyPalette } from "../shared/wcag";
+import type { ContrastMode, OmarchyThemeStatus } from "../shared/omarchy";
+import { DEFAULT_CONTRAST_MODE, parseColorsToml, solveOmarchyPalette } from "../shared/wcag";
 
 export { parseColorsToml };
 
@@ -11,12 +11,13 @@ export function stateDirectory(): string {
   return path.join(stateHome, "omarchy", "current");
 }
 
-function unavailableStatus(error: string): OmarchyThemeStatus {
+function unavailableStatus(error: string, contrastMode: ContrastMode = DEFAULT_CONTRAST_MODE): OmarchyThemeStatus {
   return {
     available: false,
     themeName: null,
     generation: null,
     syncedAt: new Date().toISOString(),
+    contrastMode,
     appearance: null,
     colors: null,
     wcag: null,
@@ -24,11 +25,11 @@ function unavailableStatus(error: string): OmarchyThemeStatus {
   };
 }
 
-export function readOmarchyThemeStatus(): OmarchyThemeStatus {
+export function readOmarchyThemeStatus(contrastMode: ContrastMode = DEFAULT_CONTRAST_MODE): OmarchyThemeStatus {
   const dir = stateDirectory();
   try {
     const themeName = fs.readFileSync(path.join(dir, "theme.name"), "utf8").trim();
-    if (!themeName) return unavailableStatus("Omarchy theme name file is empty");
+    if (!themeName) return unavailableStatus("Omarchy theme name file is empty", contrastMode);
     let generation: string | null = null;
     try {
       generation = fs.readFileSync(path.join(dir, "theme.generation"), "utf8").trim() || null;
@@ -36,29 +37,39 @@ export function readOmarchyThemeStatus(): OmarchyThemeStatus {
       generation = null;
     }
     const values = parseColorsToml(fs.readFileSync(path.join(dir, "theme", "colors.toml"), "utf8"));
-    const solved = solveOmarchyPalette(values);
-    if (!solved) return unavailableStatus(`Theme "${themeName}" has no readable colors.toml palette`);
+    const solved = solveOmarchyPalette(values, contrastMode);
+    if (!solved) return unavailableStatus(`Theme "${themeName}" has no readable colors.toml palette`, contrastMode);
     return {
       available: true,
       themeName,
       generation,
       syncedAt: new Date().toISOString(),
+      contrastMode: solved.mode,
       appearance: solved.appearance,
       colors: solved.colors,
       wcag: solved.wcag,
       error: null,
     };
   } catch {
-    return unavailableStatus("Omarchy state not found on this host");
+    return unavailableStatus("Omarchy state not found on this host", contrastMode);
   }
 }
 
 function statusSignature(status: OmarchyThemeStatus): string {
-  return JSON.stringify([status.available, status.themeName, status.generation, status.appearance, status.colors, status.wcag]);
+  return JSON.stringify([
+    status.available,
+    status.themeName,
+    status.generation,
+    status.contrastMode,
+    status.appearance,
+    status.colors,
+    status.wcag,
+  ]);
 }
 
 export class OmarchyThemeWatcher {
-  private status: OmarchyThemeStatus = unavailableStatus("Not read yet");
+  private contrastMode: ContrastMode = DEFAULT_CONTRAST_MODE;
+  private status: OmarchyThemeStatus = unavailableStatus("Not read yet", this.contrastMode);
   private listeners = new Set<(status: OmarchyThemeStatus) => void>();
   private fsWatcher: fs.FSWatcher | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -66,6 +77,12 @@ export class OmarchyThemeWatcher {
 
   current(): OmarchyThemeStatus {
     return this.status;
+  }
+
+  setContrastMode(mode: ContrastMode): void {
+    if (this.contrastMode === mode) return;
+    this.contrastMode = mode;
+    this.refresh();
   }
 
   onChange(listener: (status: OmarchyThemeStatus) => void): () => void {
@@ -117,12 +134,14 @@ export class OmarchyThemeWatcher {
   }
 
   private refresh(): void {
-    const next = readOmarchyThemeStatus();
+    const next = readOmarchyThemeStatus(this.contrastMode);
     const changed = statusSignature(next) !== statusSignature(this.status);
     this.status = next;
     if (!changed) return;
     if (next.available) {
-      console.log(`Omarchy theme synced: ${next.themeName}${next.generation ? ` (generation ${next.generation})` : ""}`);
+      console.log(
+        `Omarchy theme synced (${this.contrastMode}): ${next.themeName}${next.generation ? ` (generation ${next.generation})` : ""}`,
+      );
     } else {
       console.log(`Omarchy theme unavailable: ${next.error ?? "unknown reason"}`);
     }

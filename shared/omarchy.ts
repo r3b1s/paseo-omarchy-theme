@@ -1,5 +1,19 @@
-import { defineRpc, defineSubscription } from "@getpaseo/plugin";
+import { defineRpc, defineSettings, defineSubscription } from "@getpaseo/plugin";
 import { z } from "zod";
+
+export const contrastModeSchema = z.enum(["balanced", "faithful", "wcag-aa"]);
+export type ContrastMode = z.infer<typeof contrastModeSchema>;
+
+export const omarchySettingsSchema = z.object({
+  contrastMode: contrastModeSchema.default("balanced"),
+});
+
+export const omarchySettings = defineSettings({
+  id: "omarchy-theme",
+  scope: "host",
+  version: 1,
+  schema: omarchySettingsSchema,
+});
 
 export const themePaletteSchema = z.object({
   background: z.string(),
@@ -19,10 +33,12 @@ export const themePaletteSchema = z.object({
 });
 
 export const wcagDiagnosticsSchema = z.object({
-  level: z.literal("AA"),
+  level: z.enum(["balanced", "faithful", "AA"]),
   adjustedTokens: z.array(z.string()),
   minTextContrast: z.number(),
   minUiContrast: z.number(),
+  minPrimaryTextContrast: z.number().optional(),
+  minBorderContrast: z.number().optional(),
 });
 
 export const omarchyThemeStatusSchema = z.object({
@@ -30,6 +46,7 @@ export const omarchyThemeStatusSchema = z.object({
   themeName: z.string().nullable(),
   generation: z.string().nullable(),
   syncedAt: z.string().nullable(),
+  contrastMode: contrastModeSchema.optional(),
   appearance: z.enum(["light", "dark"]).nullable(),
   colors: themePaletteSchema.nullable(),
   wcag: wcagDiagnosticsSchema.nullable().optional(),

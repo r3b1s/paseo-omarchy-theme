@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import type { ThemePalette } from "./wcag";
+import type { ContrastMode, ThemePalette } from "./wcag";
 import {
+  DEFAULT_CONTRAST_MODE,
   TEXT_CONTRAST_AA,
   UI_CONTRAST_AA,
   contrastRatio,
@@ -15,7 +16,29 @@ import {
   solveOmarchyPalette,
 } from "./wcag";
 
-function assertPaletteMeetsWcagAA(colors: ThemePalette, label: string): void {
+function assertSurfacesSeparated(colors: ThemePalette, label: string): void {
+  assert.notEqual(colors.raised, colors.background, `${label}: raised collapsed onto background`);
+  assert.notEqual(colors.sidebar, colors.background, `${label}: sidebar collapsed onto background`);
+  assert.notEqual(colors.sidebarHover, colors.sidebar, `${label}: sidebarHover collapsed onto sidebar`);
+  assert.notEqual(colors.sidebarSelected, colors.sidebar, `${label}: sidebarSelected collapsed onto sidebar`);
+  assert.notEqual(colors.sidebarSelected, colors.sidebarHover, `${label}: sidebarSelected collapsed onto sidebarHover`);
+  assert.notEqual(colors.surface3, colors.raised, `${label}: surface3 collapsed onto raised`);
+  assert.notEqual(colors.surface4, colors.surface3, `${label}: surface4 collapsed onto surface3`);
+}
+
+function assertPaletteMeetsMode(
+  colors: ThemePalette,
+  label: string,
+  floors: {
+    fg: number;
+    muted: number;
+    extraMuted: number;
+    borderMin: number;
+    borderMaxOnRaised?: number;
+    accent: number;
+    ring: number;
+  },
+): void {
   const allSurfaces = [
     colors.background,
     colors.raised,
@@ -31,44 +54,57 @@ function assertPaletteMeetsWcagAA(colors: ThemePalette, label: string): void {
 
   for (const surface of allSurfaces) {
     assert.ok(
-      contrastRatio(colors.foreground, surface) >= TEXT_CONTRAST_AA,
-      `${label}: foreground (${colors.foreground}) on ${surface} < 4.5`,
+      contrastRatio(colors.foreground, surface) >= floors.fg,
+      `${label}: foreground (${colors.foreground}) on ${surface} < ${floors.fg}`,
     );
     assert.ok(
-      contrastRatio(colors.mutedForeground, surface) >= TEXT_CONTRAST_AA,
-      `${label}: mutedForeground (${colors.mutedForeground}) on ${surface} < 4.5`,
+      contrastRatio(colors.mutedForeground, surface) >= floors.muted,
+      `${label}: mutedForeground (${colors.mutedForeground}) on ${surface} < ${floors.muted}`,
     );
     assert.ok(
-      contrastRatio(colors.foregroundExtraMuted, surface) >= TEXT_CONTRAST_AA,
-      `${label}: foregroundExtraMuted (${colors.foregroundExtraMuted}) on ${surface} < 4.5`,
+      contrastRatio(colors.foregroundExtraMuted, surface) >= floors.extraMuted,
+      `${label}: foregroundExtraMuted (${colors.foregroundExtraMuted}) on ${surface} < ${floors.extraMuted}`,
     );
     assert.ok(
-      contrastRatio(colors.ring, surface) >= UI_CONTRAST_AA,
-      `${label}: ring (${colors.ring}) on ${surface} < 3.0`,
+      contrastRatio(colors.ring, surface) >= floors.ring,
+      `${label}: ring (${colors.ring}) on ${surface} < ${floors.ring}`,
     );
   }
 
   for (const surface of uiSurfaces) {
     assert.ok(
-      contrastRatio(colors.border, surface) >= UI_CONTRAST_AA,
-      `${label}: border (${colors.border}) on ${surface} < 3.0`,
+      contrastRatio(colors.border, surface) >= floors.borderMin,
+      `${label}: border (${colors.border}) on ${surface} < ${floors.borderMin}`,
+    );
+  }
+
+  if (floors.borderMaxOnRaised !== undefined) {
+    const borderOnRaised = contrastRatio(colors.border, colors.raised);
+    assert.ok(
+      borderOnRaised <= floors.borderMaxOnRaised,
+      `${label}: border (${colors.border}) on raised (${colors.raised}) = ${borderOnRaised.toFixed(2)} > ${floors.borderMaxOnRaised}`,
     );
   }
 
   for (const surface of accentSurfaces) {
     assert.ok(
-      contrastRatio(colors.accent, surface) >= TEXT_CONTRAST_AA,
-      `${label}: accent (${colors.accent}) on ${surface} < 4.5`,
+      contrastRatio(colors.accent, surface) >= floors.accent,
+      `${label}: accent (${colors.accent}) on ${surface} < ${floors.accent}`,
     );
   }
 
-  assert.notEqual(colors.raised, colors.background, `${label}: raised collapsed onto background`);
-  assert.notEqual(colors.sidebar, colors.background, `${label}: sidebar collapsed onto background`);
-  assert.notEqual(colors.sidebarHover, colors.sidebar, `${label}: sidebarHover collapsed onto sidebar`);
-  assert.notEqual(colors.sidebarSelected, colors.sidebar, `${label}: sidebarSelected collapsed onto sidebar`);
-  assert.notEqual(colors.sidebarSelected, colors.sidebarHover, `${label}: sidebarSelected collapsed onto sidebarHover`);
-  assert.notEqual(colors.surface3, colors.raised, `${label}: surface3 collapsed onto raised`);
-  assert.notEqual(colors.surface4, colors.surface3, `${label}: surface4 collapsed onto surface3`);
+  assertSurfacesSeparated(colors, label);
+}
+
+function assertPaletteMeetsWcagAA(colors: ThemePalette, label: string): void {
+  assertPaletteMeetsMode(colors, label, {
+    fg: TEXT_CONTRAST_AA,
+    muted: TEXT_CONTRAST_AA,
+    extraMuted: TEXT_CONTRAST_AA,
+    borderMin: UI_CONTRAST_AA,
+    accent: TEXT_CONTRAST_AA,
+    ring: UI_CONTRAST_AA,
+  });
 }
 
 test("WCAG 2.2 luminance and contrast ratio match reference values", () => {
@@ -93,18 +129,38 @@ test("detectAppearance determines polarity from luminance even when mode is omit
   assert.equal(detectAppearance("#eff1f5", "#4c4f69"), "light");
 });
 
-test("solveOmarchyPalette synthesizes missing secondary keys from background and foreground", () => {
+test("solveOmarchyPalette defaults to balanced mode and synthesizes missing secondary keys", () => {
   const solved = solveOmarchyPalette({
     background: "#181a1f",
     foreground: "#e6e8ee",
   });
   assert.ok(solved);
+  assert.equal(solved.mode, DEFAULT_CONTRAST_MODE);
+  assert.equal(solved.mode, "balanced");
   assert.equal(solved.appearance, "dark");
-  assertPaletteMeetsWcagAA(solved.colors, "minimal-dark");
+  assertPaletteMeetsMode(solved.colors, "minimal-dark-balanced", {
+    fg: 4.5,
+    muted: 3.2,
+    extraMuted: 2.2,
+    borderMin: 1.22,
+    borderMaxOnRaised: 1.65,
+    accent: 3.0,
+    ring: 2.5,
+  });
+
+  const wcagSolved = solveOmarchyPalette(
+    {
+      background: "#181a1f",
+      foreground: "#e6e8ee",
+    },
+    "wcag-aa",
+  );
+  assert.ok(wcagSolved);
+  assertPaletteMeetsWcagAA(wcagSolved.colors, "minimal-dark-wcag");
 });
 
 test("solveOmarchyPalette repairs collapsed surfaces, bright muted surface4, and low-contrast foregrounds", () => {
-  const solved = solveOmarchyPalette({
+  const adversarial = {
     mode: "dark",
     background: "#0c0b0c",
     dark_background: "#0c0b0c",
@@ -114,16 +170,77 @@ test("solveOmarchyPalette repairs collapsed surfaces, bright muted surface4, and
     accent: "#3a4552",
     foreground: "#6a7077",
     dark_foreground: "#2c3035",
+  };
+
+  const wcag = solveOmarchyPalette(adversarial, "wcag-aa");
+  assert.ok(wcag);
+  assert.equal(wcag.appearance, "dark");
+  assertPaletteMeetsWcagAA(wcag.colors, "adversarial-collapsed-wcag");
+  assert.ok(wcag.wcag.adjustedTokens.length > 0);
+  assert.ok(wcag.wcag.minTextContrast >= TEXT_CONTRAST_AA);
+  assert.ok(wcag.wcag.minUiContrast >= UI_CONTRAST_AA);
+
+  const balanced = solveOmarchyPalette(adversarial, "balanced");
+  assert.ok(balanced);
+  assertPaletteMeetsMode(balanced.colors, "adversarial-collapsed-balanced", {
+    fg: 4.5,
+    muted: 3.2,
+    extraMuted: 2.2,
+    borderMin: 1.22,
+    borderMaxOnRaised: 1.65,
+    accent: 3.0,
+    ring: 2.5,
   });
-  assert.ok(solved);
-  assert.equal(solved.appearance, "dark");
-  assertPaletteMeetsWcagAA(solved.colors, "adversarial-collapsed");
-  assert.ok(solved.wcag.adjustedTokens.length > 0);
-  assert.ok(solved.wcag.minTextContrast >= TEXT_CONTRAST_AA);
-  assert.ok(solved.wcag.minUiContrast >= UI_CONTRAST_AA);
 });
 
-test("solveOmarchyPalette is strictly deterministic", () => {
+test("balanced mode softens harsh borders while faithful preserves authored tokens", () => {
+  const everforest = {
+    mode: "dark",
+    accent: "#7fbbb3",
+    selection: "#3d484d",
+    muted: "#475258",
+    background: "#2d353b",
+    dark_background: "#21272c",
+    lighter_background: "#343f44",
+    foreground: "#d3c6aa",
+    dark_foreground: "#4f585e",
+    light_foreground: "#9da9a0",
+  };
+
+  const balanced = solveOmarchyPalette(everforest, "balanced");
+  const faithful = solveOmarchyPalette(everforest, "faithful");
+  const wcag = solveOmarchyPalette(everforest, "wcag-aa");
+  assert.ok(balanced && faithful && wcag);
+
+  assert.ok(
+    contrastRatio(balanced.colors.border, balanced.colors.raised) <
+      contrastRatio(wcag.colors.border, wcag.colors.raised),
+    "balanced border should be softer than WCAG 2.2 AA border",
+  );
+  assert.equal(faithful.colors.border, "#475258");
+  assert.equal(faithful.colors.sidebar, "#21272c");
+  assert.equal(faithful.colors.raised, "#343f44");
+  assert.equal(faithful.colors.sidebarSelected, "#3d484d");
+  assert.equal(faithful.colors.accent, "#7fbbb3");
+
+  const ethereal = {
+    mode: "dark",
+    background: "#060b1e",
+    dark_background: "#040714",
+    lighter_background: "#131a3a",
+    selection: "#1b254f",
+    muted: "#6d7db6",
+    foreground: "#ffcead",
+    dark_foreground: "#6d7db6",
+    light_foreground: "#ffe0cc",
+    accent: "#7aa2f7",
+  };
+  const etherealBalanced = solveOmarchyPalette(ethereal, "balanced");
+  assert.ok(etherealBalanced);
+  assert.ok(contrastRatio(etherealBalanced.colors.border, etherealBalanced.colors.raised) <= 1.65);
+});
+
+test("solveOmarchyPalette is strictly deterministic across all modes", () => {
   const input = {
     mode: "light",
     background: "#ffffff",
@@ -136,14 +253,18 @@ test("solveOmarchyPalette is strictly deterministic", () => {
     dark_foreground: "#c0c0c0",
     light_foreground: "#000000",
   };
-  const first = solveOmarchyPalette(input);
-  const second = solveOmarchyPalette(input);
-  assert.deepEqual(first, second);
-  assert.ok(first);
-  assertPaletteMeetsWcagAA(first.colors, "white-deterministic");
+  for (const mode of ["balanced", "faithful", "wcag-aa"] satisfies ContrastMode[]) {
+    const first = solveOmarchyPalette(input, mode);
+    const second = solveOmarchyPalette(input, mode);
+    assert.deepEqual(first, second, `${mode} should be deterministic`);
+    assert.ok(first);
+  }
+  const wcag = solveOmarchyPalette(input, "wcag-aa");
+  assert.ok(wcag);
+  assertPaletteMeetsWcagAA(wcag.colors, "white-deterministic");
 });
 
-test("all installed host Omarchy themes satisfy WCAG 2.2 AA deterministically", () => {
+test("all installed host Omarchy themes satisfy invariants across all three modes", () => {
   const themesDir = "/usr/share/omarchy/themes";
   if (!fs.existsSync(themesDir)) return;
 
@@ -154,11 +275,35 @@ test("all installed host Omarchy themes satisfy WCAG 2.2 AA deterministically", 
     const colorsPath = path.join(themesDir, entry.name, "colors.toml");
     if (!fs.existsSync(colorsPath)) continue;
     const parsed = parseColorsToml(fs.readFileSync(colorsPath, "utf8"));
-    const solved = solveOmarchyPalette(parsed);
-    assert.ok(solved, `Expected ${entry.name} to produce a palette`);
-    assertPaletteMeetsWcagAA(solved.colors, entry.name);
+
+    const balanced = solveOmarchyPalette(parsed, "balanced");
+    assert.ok(balanced, `Expected ${entry.name} (balanced) to produce a palette`);
+    assertPaletteMeetsMode(balanced.colors, `${entry.name}:balanced`, {
+      fg: 4.5,
+      muted: 3.2,
+      extraMuted: 2.2,
+      borderMin: 1.22,
+      borderMaxOnRaised: 1.65,
+      accent: 3.0,
+      ring: 2.5,
+    });
+
+    const faithful = solveOmarchyPalette(parsed, "faithful");
+    assert.ok(faithful, `Expected ${entry.name} (faithful) to produce a palette`);
+    assertPaletteMeetsMode(faithful.colors, `${entry.name}:faithful`, {
+      fg: 3.0,
+      muted: 2.2,
+      extraMuted: 1.5,
+      borderMin: 1.15,
+      accent: 2.5,
+      ring: 2.0,
+    });
+
+    const wcag = solveOmarchyPalette(parsed, "wcag-aa");
+    assert.ok(wcag, `Expected ${entry.name} (wcag-aa) to produce a palette`);
+    assertPaletteMeetsWcagAA(wcag.colors, `${entry.name}:wcag-aa`);
     assert.ok(
-      minContrastAgainst(solved.colors.foreground, [solved.colors.background]) >= TEXT_CONTRAST_AA,
+      minContrastAgainst(wcag.colors.foreground, [wcag.colors.background]) >= TEXT_CONTRAST_AA,
       `${entry.name} foreground on background`,
     );
   }

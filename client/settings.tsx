@@ -1,9 +1,21 @@
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { useSubscription } from "@getpaseo/plugin/client";
-import { SettingsCard, SettingsRow, SettingsSection } from "@getpaseo/plugin/client/ui";
+import { useSettings, useSubscription } from "@getpaseo/plugin/client";
+import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@getpaseo/plugin/client/ui";
 import { useMemo, useState } from "react";
 import { Text, View } from "react-native";
-import { omarchyThemeWatch, type OmarchyThemeStatus } from "../shared/omarchy";
+import { omarchySettings, omarchyThemeWatch, type ContrastMode, type OmarchyThemeStatus } from "../shared/omarchy";
+
+const CONTRAST_MODE_OPTIONS: readonly { label: string; value: ContrastMode }[] = [
+  { label: "Balanced (Default)", value: "balanced" },
+  { label: "Faithful", value: "faithful" },
+  { label: "WCAG 2.2 AA", value: "wcag-aa" },
+];
+
+const CONTRAST_MODE_HINTS: Record<ContrastMode, string> = {
+  balanced: "Smooth hairline borders and tiered surfaces aligned with Paseo's built-in themes.",
+  faithful: "Preserves Omarchy's authored colors.toml palette with minimal guardrails.",
+  "wcag-aa": "Enforces WCAG 2.2 AA contrast thresholds across all text, borders, and accents.",
+};
 
 function themeLabel(name: string | null): string {
   if (!name) return "None";
@@ -23,6 +35,16 @@ function formatTime(syncedAt: string | null): string {
 export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
   const [status, setStatus] = useState<OmarchyThemeStatus | null>(null);
   const subscription = useSubscription(omarchyThemeWatch, {}, setStatus);
+  const settings = useSettings(omarchySettings);
+
+  const selectedMode: ContrastMode = settings.status === "ready" ? settings.values.contrastMode : "balanced";
+  const selectError =
+    settings.saveError ?? (settings.status === "error" || settings.status === "invalid" ? settings.error : null);
+
+  const handleModeChange = (contrastMode: ContrastMode) => {
+    if (settings.status !== "ready" || contrastMode === settings.values.contrastMode) return;
+    void settings.save({ contrastMode }, settings.revision);
+  };
 
   const styles = useMemo(
     () => ({
@@ -42,16 +64,37 @@ export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
     return { label: "Not available", style: styles.danger };
   })();
 
+  const activeMode: ContrastMode =
+    status?.contrastMode ??
+    (status?.wcag?.level === "AA" ? "wcag-aa" : status?.wcag?.level === "faithful" ? "faithful" : "balanced");
+
   const contrastSummary = (() => {
     const wcag = status?.wcag;
     if (!status?.available || !wcag) return "—";
-    const minRatio = wcag.minTextContrast.toFixed(1);
-    if (wcag.adjustedTokens.length === 0) return `WCAG 2.2 AA · Passed natively (${minRatio}:1 min)`;
-    return `WCAG 2.2 AA · ${wcag.adjustedTokens.length} adjusted (${minRatio}:1 min)`;
+    if (activeMode === "wcag-aa") {
+      const minRatio = wcag.minTextContrast.toFixed(1);
+      if (wcag.adjustedTokens.length === 0) return `WCAG 2.2 AA · Passed natively (${minRatio}:1 min)`;
+      return `WCAG 2.2 AA · ${wcag.adjustedTokens.length} adjusted (${minRatio}:1 min)`;
+    }
+    const modeLabel = activeMode === "faithful" ? "Faithful" : "Balanced";
+    const primaryRatio = (wcag.minPrimaryTextContrast ?? wcag.minTextContrast).toFixed(1);
+    const borderRatio = (wcag.minBorderContrast ?? wcag.minUiContrast).toFixed(1);
+    return `${modeLabel} · ${primaryRatio}:1 text · ${borderRatio}:1 border`;
   })();
 
   return (
     <SettingsSection title="Omarchy theme sync" info="Follows the active theme of the Omarchy desktop on this host.">
+      <SettingsCard>
+        <SettingsSelect
+          label="Contrast mode"
+          hint={CONTRAST_MODE_HINTS[selectedMode]}
+          error={selectError}
+          value={selectedMode}
+          options={CONTRAST_MODE_OPTIONS}
+          onValueChange={handleModeChange}
+          disabled={settings.status !== "ready" || settings.saving}
+        />
+      </SettingsCard>
       <SettingsCard>
         <SettingsRow label="Status">
           <Text style={syncState.style}>{syncState.label}</Text>
@@ -75,7 +118,7 @@ export function OmarchySettingsScreen({ theme, layout }: PluginSurfaceProps) {
             Select the theme named Omarchy under Settings, Appearance to follow the desktop theme on this device. Devices
             that keep a built-in theme are not affected.
           </Text>
-          {status?.available && status.wcag && status.wcag.adjustedTokens.length > 0 ? (
+          {activeMode === "wcag-aa" && status?.available && status.wcag && status.wcag.adjustedTokens.length > 0 ? (
             <Text style={styles.note}>Adjusted tokens: {status.wcag.adjustedTokens.join(", ")}</Text>
           ) : null}
           {status && !status.available && status.error ? <Text style={styles.danger}>{status.error}</Text> : null}

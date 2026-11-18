@@ -15,9 +15,9 @@ More screenshots: [Ristretto](assets/screenshots/ristretto.png), [Ethereal](asse
 ## Features
 
 - **Live sync.** The daemon watches Omarchy's theme state and pushes the new palette to every connected app as soon as the desktop theme changes.
-- **Readable on every theme.** Colors are adjusted where needed to meet WCAG 2.2 Level AA contrast for text, accents, borders and focus rings. Missing secondary colors are derived from the theme's background and foreground.
+- **Three contrast modes.** Choose between **Balanced** (default, with smooth hairline borders and tiered surfaces aligned with Paseo's built-in themes), **Faithful** (preserving Omarchy's `colors.toml` tokens with minimal guardrails), and **WCAG 2.2 AA** (enforcing >= 4.5:1 text/accents and >= 3:1 borders/focus rings).
 - **Per-device choice.** The theme appears under Settings → Appearance. Each device selects it independently, so devices that keep a built-in theme are unaffected.
-- **Status screen.** Settings → Omarchy theme shows the synced theme name, generation, last sync time and contrast diagnostics.
+- **Settings & status screen.** Settings → Omarchy theme lets you switch contrast mode and shows the synced theme name, generation, last sync time, and contrast diagnostics.
 
 ## Requirements
 
