@@ -2,7 +2,16 @@
   "id": "paseo-omarchy-theme",
   "name": "Omarchy Theme",
   "description": "Adds an Omarchy theme that follows the active theme of the Omarchy desktop on this host.",
-  "media": [],
+  "media": [
+    "assets/thumbnail.png",
+    "assets/screenshots/tokyo-night.png",
+    "assets/screenshots/rose-pine.png",
+    "assets/screenshots/ristretto.png",
+    "assets/screenshots/ethereal.png",
+    "assets/screenshots/everforest.png",
+    "assets/screenshots/catppuccin-latte.png",
+    "assets/screenshots/jade-horse.png"
+  ],
   "requirements": {
     "paseo": ">=0.16.1"
   }
