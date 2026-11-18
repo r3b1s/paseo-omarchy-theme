@@ -10,7 +10,7 @@ A [Paseo](https://paseo.sh) plugin that adds a theme named **Omarchy**, which fo
 | **Everforest** | **Rose Pine** |
 | ![Everforest](assets/screenshots/everforest.png) | ![Rose Pine](assets/screenshots/rose-pine.png) |
 
-More screenshots: [Ristretto](assets/screenshots/ristretto.png), [Ethereal](assets/screenshots/ethereal.png), [Jade Horse](assets/screenshots/jade-horse.png).
+More screenshots: [Ristretto](assets/screenshots/ristretto.png), [Ethereal](assets/screenshots/ethereal.png), [Jade Horse](assets/screenshots/jade-horse.png), and the [settings screen](assets/screenshots/settings-lumon.png) (Lumon).
 
 ## Features
 
@@ -31,7 +31,7 @@ Plugins must be enabled first, in Settings → Plugins.
 Install from GitHub:
 
 ```sh
-paseo plugin add github:r3b1s/paseo-omarchy-theme --ref v0.1.0
+paseo plugin add github:r3b1s/paseo-omarchy-theme
 ```
 
 Or paste `github:r3b1s/paseo-omarchy-theme` into Settings → Plugins → Plugin source.

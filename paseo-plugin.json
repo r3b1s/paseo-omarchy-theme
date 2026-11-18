@@ -10,7 +10,8 @@
     "assets/screenshots/ethereal.png",
     "assets/screenshots/everforest.png",
     "assets/screenshots/catppuccin-latte.png",
-    "assets/screenshots/jade-horse.png"
+    "assets/screenshots/jade-horse.png",
+    "assets/screenshots/settings-lumon.png"
   ],
   "requirements": {
     "paseo": ">=0.16.1"
